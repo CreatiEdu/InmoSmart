@@ -1,0 +1,31 @@
+# --- ETAPA 1: Construcción (Build) ---
+FROM node:22.23.3-alpine AS builder
+
+# Establecemos el directorio de trabajo
+WORKDIR /app
+
+# Copiamos primero los archivos de dependencias para aprovechar la caché de Docker
+COPY package*.json ./
+
+# Instalamos las dependencias
+RUN npm install
+
+# Copiamos el resto del código del proyecto
+COPY ./app ./tmp/cosas
+
+# Ejecutamos el script de build de tu package.json
+# (Asegúrate de que en package.json tengas un script llamado "build", por ejemplo: "build": "webpack --mode production")
+RUN npm run
+
+
+# --- ETAPA 2: Servidor de producción ---
+FROM nginx:alpine
+
+# Copiamos la carpeta compilada desde la etapa de build a la ruta pública de Nginx.
+# NOTA: Cambia 'dist' por el nombre de la carpeta de salida que genera tu proyecto (ej. 'build', 'public', etc.)
+COPY --from=builder /app/app /usr/share/nginx/html
+
+# Exponemos el puerto 80
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
