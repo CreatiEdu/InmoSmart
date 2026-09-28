@@ -12,10 +12,19 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ll-dm@0v_gx)c6u0$j-(3287u@mil8e73v)l=5-b0ktp5xzf+l'
+SECRET_KEY_FILE = BASE_DIR / 'secret_key.txt'  # Puedes cambiar la ruta, ej: Path('/etc/miapp/secret_key.txt')
+
+try:
+    with open(SECRET_KEY_FILE) as f:
+        SECRET_KEY = f.read().strip()
+except FileNotFoundError:
+    raise FileNotFoundError(f"No se encontró el archivo de la clave secreta: {SECRET_KEY_FILE}")
+
+if not SECRET_KEY:
+    raise ValueError("El archivo de la clave secreta está vacío")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = []
 
