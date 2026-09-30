@@ -26,7 +26,13 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = []
+# Hosts
+try:
+    with open(BASE_DIR / 'hosts.json') as f:
+        hosts = json.load(f)
+except FileNotFoundError:
+    raise FileNotFoundError("No se encontró el archivo hosts.json")
+ALLOWED_HOSTS = hosts['hosts']
 
 # Application definition
 INSTALLED_APPS = [
