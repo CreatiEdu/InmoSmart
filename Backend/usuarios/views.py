@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from django.contrib.auth.hashers import make_password, check_password
 from .models import Usuario
 from .utils import generate_jwt_token
 
@@ -20,11 +21,13 @@ def register(request):
         )
 
     try:
+        hashed_password = make_password(password)
+
         Usuario.objects.create(
             nombre=nombre,
             dni=dni,
             email=email,
-            password=password,
+            password=hashed_password,
             rol=1
         )
     except Exception as e:
@@ -44,21 +47,25 @@ def login(request):
     password = request.data.get('password')
 
     try:
-        usuario = Usuario.objects.get(
-            email=email,
-            password=password
-        )
+        usuario = Usuario.objects.get(email=email)
 
-        token = generate_jwt_token(usuario)
+        if check_password(password, usuario.password):
+            token = generate_jwt_token(usuario)
 
-        return Response({
-            'token': token,
-            'id': usuario.id_usuario,
-            'nombre': usuario.nombre,
-            'email': usuario.email,
-            'rol': usuario.rol
-        })
+            return Response({
+                'token': token,
+                'id': usuario.id_usuario,
+                'nombre': usuario.nombre,
+                'email': usuario.email,
+                'rol': usuario.rol
+            }, status=status.HTTP_200_OK)
 
+        else :
+            return Response(
+                {'error': 'Credenciales incorrectas'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
     except Usuario.DoesNotExist:
         return Response(
             {'error': 'Credenciales incorrectas'},
