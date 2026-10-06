@@ -21,7 +21,7 @@ def register(request):
         )
 
     try:
-        hashed_password = make_password(password)
+        hashed_password = password
 
         Usuario.objects.create(
             nombre=nombre,

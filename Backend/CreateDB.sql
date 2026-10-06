@@ -1,5 +1,5 @@
--- Active: 1780184813602@@inmosmart.duckdns.org@3306@inmosmart
-CREATE TABLE `Usuarios` (
+-- Active: 1790643696354@@q4os-desktop.tailec0f82.ts.net@3306@inmosmart
+CREATE TABLE `usuario` (
     `id_usuario` integer PRIMARY KEY,
     `nombre` varchar(255),
     `email` varchar(255) UNIQUE,
@@ -9,7 +9,7 @@ CREATE TABLE `Usuarios` (
     `id_rol` integer
 );
 
-CREATE TABLE `Contacto` (
+CREATE TABLE `contacto` (
     `id_contacto` integer AUTO_INCREMENT PRIMARY KEY,
     `nombre` varchar(255),
     `email` varchar(255),
@@ -19,12 +19,12 @@ CREATE TABLE `Contacto` (
     `fecha_envio` datetime
 );
 
-CREATE TABLE `Roles` (
-    `id_rol` integer PRIMARY KEY,
+CREATE TABLE `roles` (
+    `id_rol` integer AUTO_INCREMENT PRIMARY KEY,
     `nombre_rol` varchar(255)
 );
 
-CREATE TABLE `Propiedad` (
+CREATE TABLE `propiedad` (
     `id_propiedad` integer PRIMARY KEY AUTO_INCREMENT,
     `titulo` varchar(255),
     `descripcion` text,
@@ -42,18 +42,18 @@ CREATE TABLE `Propiedad` (
     `imagen_3` MEDIUMBLOB
 );
 
-CREATE TABLE `TipoPropiedad` (
+CREATE TABLE `tipopropiedad` (
     `id_tipo` integer PRIMARY KEY,
     `nombre_tipo` varchar(255)
 );
 
-CREATE TABLE `PropiedadEstado` (
+CREATE TABLE `propiedadestado` (
     `id_estado` integer PRIMARY KEY,
     `nombre_estado` varchar(255)
 );
 
-CREATE TABLE `Contractos` (
-    `id_contrato` integer PRIMARY KEY,
+CREATE TABLE `contratos` (
+    `id_contrato` integer AUTO_INCREMENT PRIMARY KEY,
     `id_inquilino_comprador` integer,
     `fecha_inicio` date,
     `fecha_fin` date,
@@ -62,32 +62,32 @@ CREATE TABLE `Contractos` (
     `id_propiedad` integer
 );
 
-CREATE TABLE `Favoritos` (
+CREATE TABLE `favoritos` (
     `id_favorito` integer PRIMARY KEY,
     `id_propiedad` integer,
     `id_usuario` integer
 );
+    
+ALTER TABLE `usuario`
+ADD CONSTRAINT `Tiene_Rol` FOREIGN KEY (`id_rol`) REFERENCES `roles` (`id_rol`);
 
-ALTER TABLE `Usuarios`
-ADD CONSTRAINT `Tiene_Rol` FOREIGN KEY (`id_rol`) REFERENCES `Roles` (`id_rol`);
+ALTER TABLE `propiedad`
+ADD CONSTRAINT `Gestiona` FOREIGN KEY (`id_gestor`) REFERENCES `usuario` (`id_usuario`);
 
-ALTER TABLE `Propiedad`
-ADD CONSTRAINT `Gestiona` FOREIGN KEY (`id_gestor`) REFERENCES `Usuarios` (`id_usuario`);
+ALTER TABLE `propiedad`
+ADD CONSTRAINT `Es_Tipo` FOREIGN KEY (`id_tipo`) REFERENCES `tipopropiedad` (`id_tipo`);
 
-ALTER TABLE `Propiedad`
-ADD CONSTRAINT `Es_Tipo` FOREIGN KEY (`id_tipo`) REFERENCES `TipoPropiedad` (`id_tipo`);
+ALTER TABLE `propiedad`
+ADD CONSTRAINT `Tiene_Estado` FOREIGN KEY (`id_estado`) REFERENCES `propiedadestado` (`id_estado`);
 
-ALTER TABLE `Propiedad`
-ADD CONSTRAINT `Tiene_Estado` FOREIGN KEY (`id_estado`) REFERENCES `PropiedadEstado` (`id_estado`);
+ALTER TABLE `contratos`
+ADD CONSTRAINT `Tiene_Propiedad` FOREIGN KEY (`id_propiedad`) REFERENCES `propiedad` (`id_propiedad`);
 
-ALTER TABLE `Contractos`
-ADD CONSTRAINT `Tiene_Propiedad` FOREIGN KEY (`id_propiedad`) REFERENCES `Propiedad` (`id_propiedad`);
+ALTER TABLE `contratos`
+ADD CONSTRAINT `Puede_ver` FOREIGN KEY (`id_inquilino_comprador`) REFERENCES `usuario` (`id_usuario`);
 
-ALTER TABLE `Contractos`
-ADD CONSTRAINT `Puede_ver` FOREIGN KEY (`id_inquilino_comprador`) REFERENCES `Usuarios` (`id_usuario`);
+ALTER TABLE `favoritos`
+ADD CONSTRAINT `Marca` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id_usuario`);
 
-ALTER TABLE `Favoritos`
-ADD CONSTRAINT `Marca` FOREIGN KEY (`id_usuario`) REFERENCES `Usuarios` (`id_usuario`);
-
-ALTER TABLE `Favoritos`
-ADD CONSTRAINT `Es_marcada` FOREIGN KEY (`id_propiedad`) REFERENCES `Propiedad` (`id_propiedad`);
+ALTER TABLE `favoritos`
+ADD CONSTRAINT `Es_marcada` FOREIGN KEY (`id_propiedad`) REFERENCES `propiedad` (`id_propiedad`);
