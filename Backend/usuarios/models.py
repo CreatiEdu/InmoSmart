@@ -11,7 +11,7 @@ class Usuario(models.Model):
     id_usuario = models.AutoField(primary_key=True)
     nombre = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
-    password = models.CharField(max_length=100)
+    password = models.CharField(max_length=255)
     dni= models.CharField(max_length=9,unique=True)
     telefono = models.CharField(max_length=50, blank=True, null=True)
     rol = models.IntegerField(choices=ROLES, default=1, db_column='id_rol')
