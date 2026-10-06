@@ -25,7 +25,7 @@ class Usuario(models.Model):
         return False
 
     class Meta:
-        db_table = "usuario"
+        db_table = "Usuarios"
 
     def __str__(self):
         return self.nombre
