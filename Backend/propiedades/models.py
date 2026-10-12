@@ -11,6 +11,11 @@ class Propiedad(models.Model):
     titulo = models.CharField(max_length=150, verbose_name="Título de la propiedad")
     descripcion = models.TextField(verbose_name="Descripción detallada")
     precio = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Precio")
+    
+    OPERACIONES = [("Alquiler", "Alquiler"), ("Venta", "Venta")]
+
+    ciudad = models.CharField(max_length=100, blank=True, default="", verbose_name="Ciudad")
+    tipo_operacion = models.CharField(max_length=20, choices=OPERACIONES, default="Venta", verbose_name="Tipo de operación")
     habitaciones = models.IntegerField(verbose_name="Habitaciones")
     baños = models.IntegerField(verbose_name="Baños")
     superficie = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Superficie")
