@@ -25,6 +25,11 @@ class JWTAuthentication(BaseAuthentication):
             raise AuthenticationFailed('El token ha expirado')
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Token inválido o malformado')
+
+        # Solo se aceptan tokens de acceso (los de refresco no sirven acá).
+        # Los tokens viejos, sin 'type', se siguen aceptando hasta que venzan.
+        if payload.get('type', 'access') != 'access':
+            raise AuthenticationFailed('Tipo de token inválido')
             
         try:
             usuario = Usuario.objects.get(id_usuario=payload.get('id_usuario'))
