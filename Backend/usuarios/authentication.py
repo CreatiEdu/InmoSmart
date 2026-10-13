@@ -3,6 +3,7 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 from .models import Usuario
+from .utils import esta_revocado
 
 class JWTAuthentication(BaseAuthentication):
     """
@@ -13,11 +14,11 @@ class JWTAuthentication(BaseAuthentication):
         auth_header = request.headers.get('Authorization')
         if not auth_header:
             return None
-        
+
         parts = auth_header.split()
         if len(parts) != 2 or parts[0].lower() != 'bearer':
             return None # Allow fallback to other auth methods or anonymous
-        
+
         token = parts[1]
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
@@ -30,12 +31,16 @@ class JWTAuthentication(BaseAuthentication):
         # Los tokens viejos, sin 'type', se siguen aceptando hasta que venzan.
         if payload.get('type', 'access') != 'access':
             raise AuthenticationFailed('Tipo de token inválido')
-            
+
+        # Sesión cerrada: el token fue revocado con /logout/
+        if esta_revocado(payload):
+            raise AuthenticationFailed('La sesión fue cerrada')
+
         try:
             usuario = Usuario.objects.get(id_usuario=payload.get('id_usuario'))
         except Usuario.DoesNotExist:
             raise AuthenticationFailed('El usuario asociado al token ya no existe')
-            
+
         return (usuario, token)
 
     def authenticate_header(self, request):
