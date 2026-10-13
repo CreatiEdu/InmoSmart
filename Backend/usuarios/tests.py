@@ -145,3 +145,51 @@ class FlujoAutenticacionTests(APITestCase):
     def test_token_vencido_es_rechazado(self):
         with self.assertRaises(AuthenticationFailed):
             self._autenticar(self._token_vencido())
+
+
+class PoliticaClavesTests(APITestCase):
+    """
+    Política de claves robustas: más de 8 caracteres, letras, números
+    y al menos un carácter especial. Se prueba por la API de registro.
+    """
+
+    def _registrar(self, password, n=1):
+        datos = {
+            'nombre': 'Prueba',
+            'dni': '1000000%d' % n,
+            'email': 'clave%d@test.com' % n,
+            'password': password,
+        }
+        return self.client.post(BASE + 'register/', datos, format='json')
+
+    def test_clave_con_solo_8_caracteres_es_rechazada(self):
+        # "Más de 8": 'Abcd123!' tiene letras, número y especial, pero solo 8
+        r = self._registrar('Abcd123!')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(Usuario.objects.count(), 0)
+
+    def test_clave_sin_caracter_especial_es_rechazada(self):
+        r = self._registrar('Abcdefgh1')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('carácter especial', r.data['error'])
+
+    def test_clave_sin_numero_es_rechazada(self):
+        r = self._registrar('Abcdefgh!!')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('número', r.data['error'])
+
+    def test_clave_sin_letra_es_rechazada(self):
+        r = self._registrar('123456789!')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('letra', r.data['error'])
+
+    def test_se_informan_todos_los_requisitos_que_faltan(self):
+        r = self._registrar('123')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('letra', r.data['error'])
+        self.assertIn('carácter especial', r.data['error'])
+
+    def test_clave_de_9_caracteres_que_cumple_todo_es_aceptada(self):
+        r = self._registrar('Zorro-7x!')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(Usuario.objects.count(), 1)
