@@ -16,6 +16,38 @@ class PropiedadViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+def propiedades_mobile(request):
+    tipo = request.query_params.get("tipoOperacion")
+    ciudad = request.query_params.get("ciudad")
+    precio_max = request.query_params.get("precioMax")
+
+    qs = Propiedad.objects.all().order_by("titulo")
+    if tipo:
+        qs = qs.filter(tipo_operacion__iexact=tipo)
+    if ciudad:
+        qs = qs.filter(ciudad__icontains=ciudad)
+    if precio_max:
+        try:
+            qs = qs.filter(precio__lte=float(precio_max))
+        except ValueError:
+            pass
+
+    data = [
+        {
+            "id": str(p.id_propiedad),
+            "titulo": p.titulo,
+            "tipoOperacion": p.tipo_operacion,
+            "ciudad": p.ciudad,
+            "precio": float(p.precio),
+            "imagen": request.build_absolute_uri(p.imagen_1.url) if p.imagen_1 else None,
+        }
+        for p in qs
+    ]
+    return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def propiedad_detalle_mobile(request, id_propiedad):
     try:
         p = Propiedad.objects.get(id_propiedad=id_propiedad)
@@ -41,15 +73,3 @@ def propiedad_detalle_mobile(request, id_propiedad):
         "aceptaMascotas": p.acepta_mascotas,
         "imagenes": imagenes,
     })
-    data = [
-        {
-            "id": str(p.id_propiedad),
-            "titulo": p.titulo,
-            "tipoOperacion": p.tipo_operacion,
-            "ciudad": p.ciudad,
-            "precio": float(p.precio),
-            "imagen": request.build_absolute_uri(p.imagen_1.url) if p.imagen_1 else None,
-        }
-        for p in qs
-    ]
-    return Response(data)
