@@ -2,17 +2,16 @@ import jwt
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.utils.crypto import constant_time_compare
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
 
 from .models import Usuario
 from .utils import generate_jwt_token, generate_refresh_token, decode_jwt_token
+from .authentication import JWTAuthentication
 
 
 def _es_hash(valor):
@@ -175,6 +174,11 @@ def refresh(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
+    return Response({
+        'token': generate_jwt_token(usuario),
+        'refresh': generate_refresh_token(usuario)
+    })
+
 
 def _datos_perfil(usuario):
     # Solo estos datos salen hacia la app (nunca la contraseña)
@@ -246,8 +250,3 @@ def perfil(request):
     usuario.save()
 
     return Response(_datos_perfil(usuario))
-
-    return Response({
-        'token': generate_jwt_token(usuario),
-        'refresh': generate_refresh_token(usuario)
-    })
