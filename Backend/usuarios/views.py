@@ -1,6 +1,8 @@
 import jwt
+from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils.crypto import constant_time_compare
@@ -10,7 +12,10 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from .models import Usuario
-from .utils import generate_jwt_token, generate_refresh_token, decode_jwt_token
+from .utils import (
+    generate_jwt_token, generate_refresh_token, decode_jwt_token,
+    revocar_token, esta_revocado,
+)
 from .authentication import JWTAuthentication
 
 
@@ -19,9 +24,33 @@ def _es_hash(valor):
     return bool(valor) and valor.startswith('pbkdf2_')
 
 
-# Nota: register, login y refresh son públicos. Con authentication_classes([])
-# no se intenta validar el header Authorization, así un token viejo o vencido
-# que mande la app no bloquea el registro, el login ni la renovación.
+# --- Control de sesiones: bloqueo por intentos fallidos de login ---
+# Se cuentan por correo (exista o no la cuenta, para no revelar cuáles existen).
+# Se configura en settings.py con LOGIN_MAX_INTENTOS y LOGIN_BLOQUEO_MINUTOS.
+
+def _clave_intentos(email):
+    return 'login_fallidos:' + str(email or '').strip().lower()
+
+
+def _login_bloqueado(email):
+    maximo = getattr(settings, 'LOGIN_MAX_INTENTOS', 5)
+    return cache.get(_clave_intentos(email), 0) >= maximo
+
+
+def _registrar_fallo_login(email):
+    minutos = getattr(settings, 'LOGIN_BLOQUEO_MINUTOS', 15)
+    clave = _clave_intentos(email)
+    cache.set(clave, cache.get(clave, 0) + 1, minutos * 60)
+
+
+def _limpiar_fallos_login(email):
+    cache.delete(_clave_intentos(email))
+
+
+# Nota: register, login, refresh y logout son públicos. Con
+# authentication_classes([]) no se intenta validar el header Authorization,
+# así un token viejo o vencido que mande la app no bloquea el registro,
+# el login, la renovación ni el cierre de sesión.
 
 @api_view(['POST'])
 @authentication_classes([])
@@ -100,6 +129,14 @@ def login(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
+    # Demasiados intentos fallidos: se bloquea sin ni siquiera mirar la clave
+    if _login_bloqueado(email):
+        minutos = getattr(settings, 'LOGIN_BLOQUEO_MINUTOS', 15)
+        return Response(
+            {'error': 'Demasiados intentos fallidos. Probá de nuevo en %d minutos.' % minutos},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
     usuario = Usuario.objects.filter(email=email).first()
     credenciales_ok = False
 
@@ -113,10 +150,13 @@ def login(request):
             usuario.save(update_fields=['password'])
 
     if not credenciales_ok:
+        _registrar_fallo_login(email)
         return Response(
             {'error': 'Credenciales incorrectas'},
             status=status.HTTP_401_UNAUTHORIZED
         )
+
+    _limpiar_fallos_login(email)
 
     token = generate_jwt_token(usuario)
     refresh_token = generate_refresh_token(usuario)
@@ -137,7 +177,8 @@ def login(request):
 def refresh(request):
     """
     Recibe {"refresh": "<token>"} y devuelve un token de acceso nuevo
-    junto con un refresh token nuevo.
+    junto con un refresh token nuevo. El refresh token usado queda revocado
+    (solo se puede usar una vez).
     """
     refresh_token = request.data.get('refresh')
 
@@ -167,6 +208,13 @@ def refresh(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
+    # Sesión cerrada o refresh token ya usado
+    if esta_revocado(payload):
+        return Response(
+            {'error': 'La sesión fue cerrada, iniciá sesión de nuevo'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
     usuario = Usuario.objects.filter(id_usuario=payload.get('id_usuario')).first()
     if not usuario:
         return Response(
@@ -174,10 +222,49 @@ def refresh(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
+    # Rotación: el refresh token usado ya no sirve más
+    revocar_token(payload)
+
     return Response({
         'token': generate_jwt_token(usuario),
         'refresh': generate_refresh_token(usuario)
     })
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def cerrar_sesion(request):
+    """
+    Cierra la sesión: revoca el refresh token ({"refresh": "<token>"}) y, si la
+    app manda el header Authorization, también el token de acceso.
+    Es idempotente: cerrar una sesión ya cerrada responde igual.
+    """
+    refresh_token = request.data.get('refresh')
+
+    if not refresh_token:
+        return Response(
+            {'error': 'Falta el refresh token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        payload = decode_jwt_token(refresh_token)
+        if payload.get('type') == 'refresh':
+            revocar_token(payload)
+    except jwt.InvalidTokenError:
+        pass  # vencido o inválido: no hay nada que revocar
+
+    partes = request.headers.get('Authorization', '').split()
+    if len(partes) == 2 and partes[0].lower() == 'bearer':
+        try:
+            payload = decode_jwt_token(partes[1])
+            if payload.get('type') == 'access':
+                revocar_token(payload)
+        except jwt.InvalidTokenError:
+            pass
+
+    return Response({'mensaje': 'Sesión cerrada'})
 
 
 def _datos_perfil(usuario):

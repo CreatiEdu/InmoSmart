@@ -2,6 +2,7 @@ import datetime
 
 import jwt
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -22,6 +23,7 @@ class FlujoAutenticacionTests(APITestCase):
     """
 
     def setUp(self):
+        cache.clear()  # sin intentos fallidos ni tokens revocados de otros tests
         self.datos = {
             'nombre': 'Prueba',
             'dni': '12345678',
@@ -193,3 +195,117 @@ class PoliticaClavesTests(APITestCase):
         r = self._registrar('Zorro-7x!')
         self.assertEqual(r.status_code, 201)
         self.assertEqual(Usuario.objects.count(), 1)
+
+
+class ControlSesionesTests(APITestCase):
+    """
+    Control de sesiones: cierre de sesión (revocación de tokens), refresh token
+    de un solo uso y bloqueo temporal tras varios intentos fallidos de login.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.email = 'sesion@test.com'
+        self.client.post(BASE + 'register/', {
+            'nombre': 'Sesion', 'dni': '20000001',
+            'email': self.email, 'password': CLAVE,
+        }, format='json')
+
+    # --- ayudas ---
+
+    def _login(self, password=CLAVE, email=None):
+        return self.client.post(
+            BASE + 'login/',
+            {'email': email or self.email, 'password': password},
+            format='json',
+        )
+
+    def _refresh(self, token):
+        return self.client.post(BASE + 'refresh/', {'refresh': token}, format='json')
+
+    def _logout(self, refresh, access=None):
+        extra = {'HTTP_AUTHORIZATION': 'Bearer ' + access} if access else {}
+        return self.client.post(BASE + 'logout/', {'refresh': refresh}, format='json', **extra)
+
+    def _autenticar(self, token):
+        request = APIRequestFactory().get('/', HTTP_AUTHORIZATION='Bearer ' + token)
+        return JWTAuthentication().authenticate(request)
+
+    # --- cierre de sesión ---
+
+    def test_logout_revoca_el_refresh_token(self):
+        login = self._login()
+        self.assertEqual(self._logout(login.data['refresh']).status_code, 200)
+        self.assertEqual(self._refresh(login.data['refresh']).status_code, 401)
+
+    def test_logout_revoca_tambien_el_token_de_acceso(self):
+        login = self._login()
+        self.assertIsNotNone(self._autenticar(login.data['token']))  # antes sirve
+        self._logout(login.data['refresh'], access=login.data['token'])
+        with self.assertRaises(AuthenticationFailed):
+            self._autenticar(login.data['token'])
+
+    def test_logout_sin_refresh_token_da_400(self):
+        r = self.client.post(BASE + 'logout/', {}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_logout_se_puede_repetir(self):
+        login = self._login()
+        self.assertEqual(self._logout(login.data['refresh']).status_code, 200)
+        self.assertEqual(self._logout(login.data['refresh']).status_code, 200)
+
+    def test_cerrar_una_sesion_no_cierra_las_otras(self):
+        # Dos dispositivos con la misma cuenta: cerrar uno no afecta al otro
+        a = self._login()
+        b = self._login()
+        self._logout(a.data['refresh'], access=a.data['token'])
+        self.assertEqual(self._refresh(b.data['refresh']).status_code, 200)
+
+    # --- refresh token de un solo uso ---
+
+    def test_el_refresh_token_solo_se_puede_usar_una_vez(self):
+        login = self._login()
+        primero = self._refresh(login.data['refresh'])
+        self.assertEqual(primero.status_code, 200)
+        segundo = self._refresh(login.data['refresh'])
+        self.assertEqual(segundo.status_code, 401)
+
+    def test_el_refresh_token_nuevo_si_funciona(self):
+        login = self._login()
+        nuevo = self._refresh(login.data['refresh'])
+        self.assertEqual(self._refresh(nuevo.data['refresh']).status_code, 200)
+
+    # --- bloqueo por intentos fallidos ---
+
+    def test_bloquea_despues_de_5_intentos_fallidos(self):
+        for _ in range(5):
+            self.assertEqual(self._login('incorrecta').status_code, 401)
+        self.assertEqual(self._login('incorrecta').status_code, 429)
+
+    def test_con_la_cuenta_bloqueada_ni_la_clave_correcta_entra(self):
+        for _ in range(5):
+            self._login('incorrecta')
+        self.assertEqual(self._login(CLAVE).status_code, 429)
+
+    def test_un_login_exitoso_reinicia_el_contador(self):
+        for _ in range(4):
+            self._login('incorrecta')
+        self.assertEqual(self._login(CLAVE).status_code, 200)
+        for _ in range(4):
+            self.assertEqual(self._login('incorrecta').status_code, 401)
+
+    def test_el_bloqueo_no_revela_si_el_correo_existe(self):
+        # Un correo inexistente se bloquea igual que uno real
+        for _ in range(5):
+            self.assertEqual(self._login('x', email='noexiste@test.com').status_code, 401)
+        self.assertEqual(self._login('x', email='noexiste@test.com').status_code, 429)
+
+    def test_el_bloqueo_de_un_correo_no_afecta_a_otro(self):
+        for _ in range(5):
+            self._login('incorrecta')
+        self.assertEqual(self._login('incorrecta').status_code, 429)
+        self.client.post(BASE + 'register/', {
+            'nombre': 'Otro', 'dni': '20000002',
+            'email': 'otro@test.com', 'password': CLAVE,
+        }, format='json')
+        self.assertEqual(self._login(CLAVE, email='otro@test.com').status_code, 200)
