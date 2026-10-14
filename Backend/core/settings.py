@@ -135,3 +135,78 @@ REST_FRAMEWORK = {
 # =========================================================================
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# =========================================================================
+# CONTROL DE SESIONES (bloqueo por intentos y revocación de tokens)
+# =========================================================================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': os.path.join(str(BASE_DIR), 'cache_sesiones'),
+    }
+}
+LOGIN_MAX_INTENTOS = 5
+LOGIN_BLOQUEO_MINUTOS = 15
+
+# =========================================================================
+# AUDITORÍA (quién hizo qué, cuándo y desde dónde)
+# =========================================================================
+os.makedirs(os.path.join(str(BASE_DIR), 'logs_auditoria'), exist_ok=True)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'auditoria': {'format': '%(asctime)s | %(message)s', 'datefmt': '%Y-%m-%d %H:%M:%S'},
+    },
+    'handlers': {
+        'auditoria_archivo': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(str(BASE_DIR), 'logs_auditoria', 'auditoria.log'),
+            'maxBytes': 1024 * 1024,
+            'backupCount': 5,
+            'encoding': 'utf-8',
+            'formatter': 'auditoria',
+        },
+    },
+    'loggers': {
+        'auditoria': {'handlers': ['auditoria_archivo'], 'level': 'INFO', 'propagate': False},
+    },
+}
+
+
+# =========================================================================
+# CONTROL DE SESIONES (bloqueo por intentos y revocación de tokens)
+# =========================================================================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': os.path.join(str(BASE_DIR), 'cache_sesiones'),
+    }
+}
+LOGIN_MAX_INTENTOS = 5
+LOGIN_BLOQUEO_MINUTOS = 15
+
+# =========================================================================
+# AUDITORÍA (quién hizo qué, cuándo y desde dónde)
+# =========================================================================
+os.makedirs(os.path.join(str(BASE_DIR), 'logs_auditoria'), exist_ok=True)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'auditoria': {'format': '%(asctime)s | %(message)s', 'datefmt': '%Y-%m-%d %H:%M:%S'},
+    },
+    'handlers': {
+        'auditoria_archivo': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(str(BASE_DIR), 'logs_auditoria', 'auditoria.log'),
+            'maxBytes': 1024 * 1024,
+            'backupCount': 5,
+            'encoding': 'utf-8',
+            'formatter': 'auditoria',
+        },
+    },
+    'loggers': {
+        'auditoria': {'handlers': ['auditoria_archivo'], 'level': 'INFO', 'propagate': False},
+    },
+}

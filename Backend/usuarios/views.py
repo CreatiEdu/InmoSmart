@@ -17,6 +17,7 @@ from .utils import (
     revocar_token, esta_revocado,
 )
 from .authentication import JWTAuthentication
+from .auditoria import registrar as auditar
 
 
 def _es_hash(valor):
@@ -69,6 +70,7 @@ def register(request):
         )
 
     if Usuario.objects.filter(email=email).exists():
+        auditar('REGISTRO_FALLIDO', request, email=email, detalle='email ya registrado')
         return Response(
             {'error': 'El email ya está registrado'},
             status=status.HTTP_400_BAD_REQUEST
@@ -90,6 +92,7 @@ def register(request):
     try:
         validate_password(password)
     except ValidationError as e:
+        auditar('REGISTRO_FALLIDO', request, email=email, detalle='clave no cumple la política')
         return Response(
             {'error': ' '.join(e.messages)},
             status=status.HTTP_400_BAD_REQUEST
@@ -104,11 +107,13 @@ def register(request):
             rol=1
         )
     except Exception:
+        auditar('REGISTRO_FALLIDO', request, email=email, detalle='error al guardar')
         return Response(
             {'error': 'No se pudo registrar el usuario'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    auditar('REGISTRO_OK', request, email=email)
     return Response(
         {'mensaje': 'Usuario registrado correctamente'},
         status=status.HTTP_201_CREATED
@@ -131,6 +136,7 @@ def login(request):
 
     # Demasiados intentos fallidos: se bloquea sin ni siquiera mirar la clave
     if _login_bloqueado(email):
+        auditar('LOGIN_BLOQUEADO', request, email=email, detalle='demasiados intentos fallidos')
         minutos = getattr(settings, 'LOGIN_BLOQUEO_MINUTOS', 15)
         return Response(
             {'error': 'Demasiados intentos fallidos. Probá de nuevo en %d minutos.' % minutos},
@@ -151,12 +157,14 @@ def login(request):
 
     if not credenciales_ok:
         _registrar_fallo_login(email)
+        auditar('LOGIN_FALLIDO', request, email=email, detalle='credenciales incorrectas')
         return Response(
             {'error': 'Credenciales incorrectas'},
             status=status.HTTP_401_UNAUTHORIZED
         )
 
     _limpiar_fallos_login(email)
+    auditar('LOGIN_OK', request, usuario=usuario)
 
     token = generate_jwt_token(usuario)
     refresh_token = generate_refresh_token(usuario)
@@ -210,6 +218,7 @@ def refresh(request):
 
     # Sesión cerrada o refresh token ya usado
     if esta_revocado(payload):
+        auditar('REFRESH_RECHAZADO', request, detalle='refresh token revocado o ya usado')
         return Response(
             {'error': 'La sesión fue cerrada, iniciá sesión de nuevo'},
             status=status.HTTP_401_UNAUTHORIZED
@@ -224,6 +233,7 @@ def refresh(request):
 
     # Rotación: el refresh token usado ya no sirve más
     revocar_token(payload)
+    auditar('REFRESH_OK', request, usuario=usuario)
 
     return Response({
         'token': generate_jwt_token(usuario),
@@ -248,10 +258,12 @@ def cerrar_sesion(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    quien = None
     try:
         payload = decode_jwt_token(refresh_token)
         if payload.get('type') == 'refresh':
             revocar_token(payload)
+            quien = Usuario.objects.filter(id_usuario=payload.get('id_usuario')).first()
     except jwt.InvalidTokenError:
         pass  # vencido o inválido: no hay nada que revocar
 
@@ -264,6 +276,7 @@ def cerrar_sesion(request):
         except jwt.InvalidTokenError:
             pass
 
+    auditar('LOGOUT', request, usuario=quien)
     return Response({'mensaje': 'Sesión cerrada'})
 
 
@@ -335,5 +348,6 @@ def perfil(request):
     usuario.dni = dni
     usuario.telefono = telefono if telefono else None
     usuario.save()
+    auditar('PERFIL_ACTUALIZADO', request, usuario=usuario)
 
     return Response(_datos_perfil(usuario))

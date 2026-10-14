@@ -309,3 +309,111 @@ class ControlSesionesTests(APITestCase):
             'email': 'otro@test.com', 'password': CLAVE,
         }, format='json')
         self.assertEqual(self._login(CLAVE, email='otro@test.com').status_code, 200)
+
+
+class AuditoriaTests(APITestCase):
+    """
+    Auditoría: cada acción importante deja una línea en el registro 'auditoria'
+    (quién, qué, desde qué IP) y nunca se guardan claves ni tokens.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.email = 'audit@test.com'
+        self.client.post(BASE + 'register/', {
+            'nombre': 'Audit', 'dni': '30000001',
+            'email': self.email, 'password': CLAVE,
+        }, format='json')
+
+    def _login(self, password=CLAVE, email=None, **extra):
+        return self.client.post(
+            BASE + 'login/',
+            {'email': email or self.email, 'password': password},
+            format='json', **extra,
+        )
+
+    def _lineas(self, contexto):
+        return [r.getMessage() for r in contexto.records]
+
+    def test_el_registro_de_usuario_se_audita(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self.client.post(BASE + 'register/', {
+                'nombre': 'Nuevo', 'dni': '30000002',
+                'email': 'nuevo@test.com', 'password': CLAVE,
+            }, format='json')
+        self.assertTrue(any('REGISTRO_OK' in l and 'nuevo@test.com' in l for l in self._lineas(cm)))
+
+    def test_un_registro_rechazado_se_audita(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self.client.post(BASE + 'register/', {
+                'nombre': 'Otro', 'dni': '30000003',
+                'email': 'otro@test.com', 'password': 'debil',
+            }, format='json')
+        self.assertTrue(any('REGISTRO_FALLIDO' in l for l in self._lineas(cm)))
+
+    def test_login_exitoso_se_audita_con_el_id_del_usuario(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self._login()
+        linea = [l for l in self._lineas(cm) if 'LOGIN_OK' in l][0]
+        self.assertIn('id=', linea)
+        self.assertIn(self.email, linea)
+
+    def test_login_fallido_se_audita(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self._login(password='Incorrecta-123!')
+        self.assertTrue(any('LOGIN_FALLIDO' in l and self.email in l for l in self._lineas(cm)))
+
+    def test_el_bloqueo_de_la_cuenta_se_audita(self):
+        for _ in range(5):
+            self._login(password='Incorrecta-123!')
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self._login()
+        self.assertTrue(any('LOGIN_BLOQUEADO' in l for l in self._lineas(cm)))
+
+    def test_refresh_y_logout_se_auditan(self):
+        login = self._login()
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            nuevo = self.client.post(BASE + 'refresh/', {'refresh': login.data['refresh']}, format='json')
+            self.client.post(BASE + 'logout/', {'refresh': nuevo.data['refresh']}, format='json')
+        texto = '\n'.join(self._lineas(cm))
+        self.assertIn('REFRESH_OK', texto)
+        self.assertIn('LOGOUT', texto)
+
+    def test_reusar_un_refresh_token_se_audita(self):
+        login = self._login()
+        viejo = login.data['refresh']
+        self.client.post(BASE + 'refresh/', {'refresh': viejo}, format='json')
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self.client.post(BASE + 'refresh/', {'refresh': viejo}, format='json')
+        self.assertTrue(any('REFRESH_RECHAZADO' in l for l in self._lineas(cm)))
+
+    def test_la_actualizacion_del_perfil_se_audita(self):
+        login = self._login()
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self.client.put(
+                BASE + 'perfil/',
+                {'nombre': 'Audit 2', 'email': self.email, 'dni': '30000001', 'telefono': '3511234567'},
+                format='json',
+                HTTP_AUTHORIZATION='Bearer ' + login.data['token'],
+            )
+        self.assertTrue(any('PERFIL_ACTUALIZADO' in l for l in self._lineas(cm)))
+
+    def test_nunca_se_registran_claves_ni_tokens(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            login = self._login()
+            self._login(password='Incorrecta-123!')
+            self.client.post(BASE + 'logout/', {'refresh': login.data['refresh']}, format='json')
+        texto = '\n'.join(self._lineas(cm))
+        for secreto in (CLAVE, 'Incorrecta-123!', login.data['token'], login.data['refresh']):
+            self.assertNotIn(secreto, texto)
+
+    def test_se_registra_la_ip_de_origen(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self._login(HTTP_X_FORWARDED_FOR='190.1.2.3, 10.0.0.1')
+        self.assertTrue(any('ip=190.1.2.3' in l for l in self._lineas(cm)))
+
+    def test_un_correo_con_saltos_de_linea_no_falsifica_el_registro(self):
+        with self.assertLogs('auditoria', 'INFO') as cm:
+            self._login(password='x', email='a@b.com\nLOGIN_OK | id=1')
+        for linea in self._lineas(cm):
+            self.assertNotIn('\n', linea)
