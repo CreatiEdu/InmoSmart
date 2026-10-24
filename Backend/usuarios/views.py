@@ -25,7 +25,8 @@ def register(request):
             dni=dni,
             email=email,
             password=password,
-            rol=1
+            rol=1,
+            activo=True
         )
     except Exception as e:
         return Response({

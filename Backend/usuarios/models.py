@@ -15,6 +15,7 @@ class Usuario(models.Model):
     dni= models.CharField(max_length=9,unique=True)
     telefono = models.CharField(max_length=50, blank=True, null=True)
     rol = models.IntegerField(choices=ROLES, default=1, db_column='id_rol')
+    activo = models.BooleanField(default=True)
 
     @property
     def is_authenticated(self):
