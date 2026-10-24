@@ -104,7 +104,8 @@ def register(request):
             dni=dni,
             email=email,
             password=make_password(password),  # se guarda el hash, nunca la clave
-            rol=1
+            rol=1,
+            activo=True
         )
     except Exception:
         auditar('REGISTRO_FALLIDO', request, email=email, detalle='error al guardar')

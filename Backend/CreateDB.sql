@@ -6,7 +6,8 @@ CREATE TABLE `Usuarios` (
     `password` varchar(255),
     `telefono` varchar(255),
     `dni` varchar(255) UNIQUE,
-    `id_rol` integer
+    `id_rol` integer,
+    `activo` boolean
 );
 
 CREATE TABLE `Contacto` (
