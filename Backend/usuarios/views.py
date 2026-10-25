@@ -148,6 +148,13 @@ def login(request):
     credenciales_ok = False
 
     if usuario:
+        if not usuario.activo:
+            auditar('LOGIN_RECHAZADO', request, email=email, detalle='cuenta dada de baja')
+            return Response(
+                {'error': 'Esta cuenta ha sido de baja.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
         if _es_hash(usuario.password):
             credenciales_ok = check_password(password, usuario.password)
         elif constant_time_compare(usuario.password, password):
@@ -352,3 +359,19 @@ def perfil(request):
     auditar('PERFIL_ACTUALIZADO', request, usuario=usuario)
 
     return Response(_datos_perfil(usuario))
+
+
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def baja_usuario(request):
+    usuario = request.user
+    usuario.activo = False
+    usuario.save(update_fields=['activo'])
+
+    auditar('BAJA_USUARIO', request, usuario=usuario)
+
+    return Response(
+        {'mensaje': 'Usuario dado de baja exitosamente'},
+        status=status.HTTP_200_OK
+        )
