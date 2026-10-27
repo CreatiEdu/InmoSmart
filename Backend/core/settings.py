@@ -11,6 +11,28 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
+
+if not DEBUG:
+    # Fuerza HTTPS
+    SECURE_SSL_REDIRECT = True
+
+    # HSTS: el navegador/cliente recordará usar solo HTTPS
+    SECURE_HSTS_SECONDS = 31536000  # 1 año (empezá con 3600 para probar)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+    # Cookies solo por HTTPS
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # Extras recomendados
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+
+    # Si estás detrás de nginx / proxy / balanceador (muy común con Docker)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY_FILE = BASE_DIR / 'secret_key.txt'  # Puedes cambiar la ruta, ej: Path('/etc/miapp/secret_key.txt')
 
