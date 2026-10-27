@@ -7,8 +7,8 @@ from django.core.cache import cache
 
 # Duración de los tokens. Se pueden cambiar desde settings.py con
 # JWT_ACCESS_MINUTES y JWT_REFRESH_DAYS (por defecto: acceso 1 día, refresco 7 días).
-ACCESS_LIFETIME = timedelta(minutes=getattr(settings, 'JWT_ACCESS_MINUTES', 1440))
-REFRESH_LIFETIME = timedelta(days=getattr(settings, 'JWT_REFRESH_DAYS', 7))
+ACCESS_LIFETIME = timedelta(minutes=getattr(settings, 'JWT_ACCESS_MINUTES', 60))
+REFRESH_LIFETIME = timedelta(minutes=getattr(settings, 'JWT_ACCESS_MINUTES', 180))
 
 
 def _nuevo_jti():
